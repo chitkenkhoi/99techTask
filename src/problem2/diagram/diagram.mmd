@@ -1,0 +1,63 @@
+flowchart TB
+    User[Users] --> CDN[CloudFront CDN]
+    CDN --> S3[S3 Static Website]
+    User --> ApiGW[API Gateway]
+    
+    subgraph "API Layer"
+        ApiGW --> WS[WebSocket API]
+        ApiGW --> REST[REST API]
+        REST --> Auth[Lambda - Auth]
+        WS --> RTU[Lambda - Real-time Updates]
+    end
+    
+    subgraph "Service Layer"
+        Auth --> UserSvc[ECS Fargate - User Service]
+        Auth --> OrderSvc[ECS Fargate - Order Service]
+        RTU --> MarketSvc[ECS Fargate - Market Data Service]
+        
+        UserSvc --> Cache1[ElastiCache - User Data]
+        OrderSvc --> ME[ECS Fargate - Matching Engine]
+        MarketSvc --> Cache2[ElastiCache - Market Data]
+        
+        ME --> Stream[Kinesis Data Streams]
+        Stream --> ME
+        Stream --> MarketSvc
+    end
+    
+    subgraph "Data Layer"
+        UserSvc --> UserDB[(Aurora PostgreSQL)]
+        OrderSvc --> OrderDB[(DynamoDB Orders)]
+        ME --> TradeDB[(DynamoDB Trades)]
+        MarketSvc --> TSDB[(DynamoDB Time Series)]
+        
+        UserDB --> UserReplica[(Aurora Read Replicas)]
+    end
+    
+    subgraph "Monitoring & Security"
+        CW[CloudWatch] --> Alarm[CloudWatch Alarms]
+        XRay[X-Ray] --> ApiGW
+        XRay --> UserSvc
+        XRay --> OrderSvc
+        XRay --> ME
+        WAF[AWS WAF] --> ApiGW
+        Cognito[Cognito] --> Auth
+    end
+    
+    subgraph "Multi-AZ / Multi-Region Deployment"
+        direction LR
+        PrimaryRegion[Region 1] --- SecondaryRegion[Region 2]
+        SecondaryRegion --- Route53[Route53]
+        Route53 --- User
+    end
+    
+    classDef primary fill:#f96,stroke:#333,stroke-width:2px
+    classDef secondary fill:#69f,stroke:#333,stroke-width:2px
+    classDef database fill:#6a6,stroke:#333,stroke-width:2px
+    classDef cache fill:#ff9,stroke:#333,stroke-width:2px
+    classDef monitoring fill:#f9f,stroke:#333,stroke-width:2px
+    
+    class ME,Stream primary
+    class UserSvc,OrderSvc,MarketSvc secondary
+    class UserDB,OrderDB,TradeDB,TSDB database
+    class Cache1,Cache2 cache
+    class CW,XRay,WAF,Cognito monitoring
